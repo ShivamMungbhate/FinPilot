@@ -10,11 +10,15 @@ __pycache__/
 !.env.example
 *.env
 
-# SQLite databases
+# SQLite databases and backups
 *.db
 *.db-journal
+*.sqlite.bak
+*.backup.json
 backend/prisma/*.db
 backend/prisma/*.db-journal
+backups/
+backend/backups/
 
 # Build outputs
 dist/

@@ -13,7 +13,7 @@ const ConfigSchema = z.object({
   FRONTEND_URL: z.string().default('http://localhost:3000'),
   AI_SERVICE_URL: z.string().default('http://localhost:5002'),
   AI_MOCK_SERVICE_URL: z.string().default('http://localhost:5001'),
-  AI_SERVICE_TOKEN: z.string().default('finpilot-internal-ai-token-2026'),
+  AI_SERVICE_TOKEN: z.string().optional(),
   
   // Auth & Session Configuration
   SESSION_SECRET: z.string().optional(),
@@ -50,17 +50,23 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-// Enforce production security rules for SESSION_SECRET
+// Enforce production security rules for SESSION_SECRET and AI_SERVICE_TOKEN
 const isProduction = (process.env.NODE_ENV || parsed.data.NODE_ENV) === 'production';
 let sessionSecret = process.env.SESSION_SECRET || parsed.data.SESSION_SECRET;
+let aiServiceToken = process.env.AI_SERVICE_TOKEN || parsed.data.AI_SERVICE_TOKEN;
 
 if (isProduction) {
   if (!sessionSecret || sessionSecret.length < 32 || sessionSecret === 'finpilot-session-secret-key-at-least-32-chars-long!') {
     console.error('❌ FATAL: In production (NODE_ENV=production), SESSION_SECRET must be explicitly provided in the environment and must be at least 32 characters long.');
     process.exit(1);
   }
+  if (!aiServiceToken || aiServiceToken === 'finpilot-internal-ai-token-2026' || aiServiceToken === 'replace-with-a-secure-random-token') {
+    console.error('❌ FATAL: In production (NODE_ENV=production), AI_SERVICE_TOKEN must be explicitly provided in the environment and cannot use predictable default values.');
+    process.exit(1);
+  }
 } else {
   sessionSecret = sessionSecret || 'finpilot-session-secret-key-at-least-32-chars-long!';
+  aiServiceToken = aiServiceToken || 'dev-ai-token-local-only';
 }
 
 // Derive split flags: SHOW_DEMO_LOGIN and ENABLE_PAYMENT_SIMULATION
@@ -75,6 +81,7 @@ const enablePaymentSimulation = process.env.ENABLE_PAYMENT_SIMULATION !== undefi
 export const config = {
   ...parsed.data,
   SESSION_SECRET: sessionSecret,
+  AI_SERVICE_TOKEN: aiServiceToken,
   SHOW_DEMO_LOGIN: showDemoLogin,
   ENABLE_PAYMENT_SIMULATION: enablePaymentSimulation
 };

@@ -18,7 +18,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("finpilot-ai")
 
 # Shared-secret token for protecting publicly reachable AI service
-AI_SERVICE_TOKEN = os.getenv("AI_SERVICE_TOKEN", "finpilot-internal-ai-token-2026")
+AI_SERVICE_TOKEN = os.getenv("AI_SERVICE_TOKEN")
+IS_PRODUCTION = os.getenv("ENVIRONMENT") == "production" or os.getenv("NODE_ENV") == "production"
+
+if IS_PRODUCTION:
+    if not AI_SERVICE_TOKEN or AI_SERVICE_TOKEN in ("finpilot-internal-ai-token-2026", "replace-with-a-secure-random-token"):
+        raise RuntimeError("FATAL: In production, AI_SERVICE_TOKEN must be explicitly set and cannot use predictable defaults.")
+else:
+    AI_SERVICE_TOKEN = AI_SERVICE_TOKEN or "dev-ai-token-local-only"
 
 app = FastAPI(
     title="FinPilot AI Service",

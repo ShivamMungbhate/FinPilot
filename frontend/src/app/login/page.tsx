@@ -165,9 +165,11 @@ function LoginFormContent() {
                     Auto-fill
                   </button>
                 </div>
-                <p className="text-[11px] text-blue-800 font-mono">
-                  {authConfig.demoEmail || 'demo@finpilot.dev'} / {authConfig.demoPassword || 'finpilot123'}
-                </p>
+                {authConfig.demoEmail && authConfig.demoPassword && (
+                  <p className="text-[11px] text-blue-800 font-mono">
+                    {authConfig.demoEmail} / {authConfig.demoPassword}
+                  </p>
+                )}
               </div>
             </div>
           )}
