@@ -1,0 +1,27 @@
+{
+  "name": "finpilot-monorepo",
+  "version": "1.0.0",
+  "description": "FinPilot - Autonomous AI & Policy-Governed PayPal Invoicing for Freelancers",
+  "scripts": {
+    "install:all": "npm --prefix ai-service install && npm --prefix backend install && npm --prefix frontend install",
+    "seed": "npm --prefix backend run seed",
+    "reset": "npm --prefix backend run reset",
+    "db:reset": "npm --prefix backend run db:reset",
+    "db:push": "npm --prefix backend run prisma:push",
+    "db:generate": "npm --prefix backend run prisma:generate",
+    "test:failure": "npm --prefix backend run test:failure",
+    "test:immutability": "npm --prefix backend run test:immutability",
+    "test:session": "npm --prefix backend run test:session",
+    "test:e2e": "npm --prefix backend run test:e2e",
+    "test": "npm --prefix backend run test",
+    "dev:ai": "python -m uvicorn --app-dir ai-service-python --port 5002 app.main:app",
+    "dev:ai:python": "python -m uvicorn --app-dir ai-service-python --port 5002 app.main:app",
+    "dev:ai:mock": "npm --prefix ai-service run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev": "concurrently -n \"AI_PY,BACKEND,FRONTEND\" -c \"magenta,blue,cyan\" \"npm run dev:ai:python\" \"npm run dev:backend\" \"npm run dev:frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

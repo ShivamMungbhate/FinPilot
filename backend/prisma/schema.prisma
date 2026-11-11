@@ -1,0 +1,96 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+
+  invoices     Invoice[]
+}
+
+model Invoice {
+  id               String        @id @default(uuid())
+  userId           String?
+  invoiceNumber    String        @unique
+  recipientName    String
+  recipientEmail   String
+  currency         String        @default("USD")
+  totalAmount      Float
+  status           String        @default("PROPOSED")
+  dueDate          DateTime
+  notes            String?
+  rawPrompt        String?
+  confidenceScore  Float?
+
+  // PayPal fields
+  paypalInvoiceId  String?       @unique
+  paypalStatus     String?
+  paypalPaymentUrl String?
+  
+  // Timestamps for lifecycle
+  approvedAt       DateTime?
+  sentAt           DateTime?
+  paidAt           DateTime?
+  lastReminderAt   DateTime?
+  reminderCount    Int           @default(0)
+
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  user             User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items            InvoiceItem[]
+  auditLogs        AuditLog[]
+
+  @@index([userId])
+  @@index([recipientEmail])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  name        String
+  description String?
+  quantity    Float    @default(1.0)
+  unitPrice   Float
+  total       Float
+  createdAt   DateTime @default(now())
+
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  invoiceId  String?
+  action     String
+  actor      String   @default("SYSTEM")
+  details    String?  // JSON serialized context
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  invoice    Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model PolicyConfig {
+  id                      String   @id @default("default")
+  maxAmountLimit          Float    @default(10000.0)
+  duplicateWindowHours    Int      @default(24)
+  maxRemindersPerInvoice  Int      @default(3)
+  minDaysBetweenReminders Int      @default(3)
+  updatedAt               DateTime @updatedAt
+}

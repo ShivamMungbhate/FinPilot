@@ -1,0 +1,31 @@
+# Dependency directories
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# Environment variable files (secrets)
+.env
+.env.*
+!.env.example
+*.env
+
+# SQLite databases
+*.db
+*.db-journal
+backend/prisma/*.db
+backend/prisma/*.db-journal
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Logs and system
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
