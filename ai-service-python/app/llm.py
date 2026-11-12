@@ -75,8 +75,54 @@ def test_gemini_connection():
 
     return response.text.strip()
 
-def generate_with_fallback(contents: str, config: dict):
-    client = get_gemini_client()
+class GeminiFallbackError(Exception):
+    """Raised when both primary and fallback Gemini models fail."""
+
+    def __init__(
+        self,
+        primary_model: str,
+        primary_error: Exception,
+        fallback_model: str,
+        fallback_error: Exception,
+    ):
+        self.primary_model = primary_model
+        self.primary_error = primary_error
+        self.fallback_model = fallback_model
+        self.fallback_error = fallback_error
+
+        # Propagate the most relevant status code
+        self.code = (
+            getattr(fallback_error, "code", None)
+            or getattr(fallback_error, "status_code", None)
+            or getattr(primary_error, "code", None)
+            or getattr(primary_error, "status_code", None)
+        )
+        self.status_code = self.code
+
+        super().__init__(
+            f"Primary model '{primary_model}' failed ({primary_error}); "
+            f"fallback model '{fallback_model}' also failed ({fallback_error})"
+        )
+
+
+def _extract_status_code(error: Exception) -> int | None:
+    code = getattr(error, "code", None)
+    if code is None:
+        code = getattr(error, "status_code", None)
+    if code is not None:
+        try:
+            return int(code)
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
+FALLBACK_RETRYABLE_STATUS_CODES = {429, 503, 504}
+
+
+def generate_with_fallback(contents: str, config: dict, client=None):
+    if client is None:
+        client = get_gemini_client()
 
     primary_model = get_gemini_model()
     fallback_model = os.getenv(
@@ -94,21 +140,35 @@ def generate_with_fallback(contents: str, config: dict):
         )
 
     except Exception as error:
-        status_code = getattr(error, "code", None)
+        status_code = _extract_status_code(error)
 
-        if status_code not in (503, 504):
+        # Only transient/capacity errors (429, 503, 504) trigger fallback.
+        # Auth (401), permission (403), bad request (400), and others fail immediately.
+        if status_code not in FALLBACK_RETRYABLE_STATUS_CODES:
             raise
 
-        if fallback_model == primary_model:
+        if not fallback_model or fallback_model == primary_model:
             raise
 
         print(
-            f"Primary model returned {status_code}. "
+            f"Primary model ({primary_model}) returned retryable status {status_code}. "
             f"Trying fallback: {fallback_model}"
         )
 
-        return client.models.generate_content(
-            model=fallback_model,
-            contents=contents,
-            config=config,
-        )
+        try:
+            return client.models.generate_content(
+                model=fallback_model,
+                contents=contents,
+                config=config,
+            )
+        except Exception as fallback_error:
+            fallback_status = _extract_status_code(fallback_error)
+            print(
+                f"Fallback model ({fallback_model}) also failed (status {fallback_status}): {fallback_error}"
+            )
+            raise GeminiFallbackError(
+                primary_model=primary_model,
+                primary_error=error,
+                fallback_model=fallback_model,
+                fallback_error=fallback_error,
+            ) from fallback_error
