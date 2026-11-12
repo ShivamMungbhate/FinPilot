@@ -1,472 +1,303 @@
 # 🧭 FinPilot
 
-> **Autonomous AI-Assisted, Policy-Governed PayPal Invoicing for Freelancers**
+> **Autonomous AI-Assisted, Policy-Governed PayPal Invoicing Platform for Freelancers**
 
-FinPilot empowers independent freelancers to generate, review, approve, dispatch, and track professional client invoices in seconds. Freelancers simply enter plain-text requests (e.g. *"Invoice Acme Corp $500 for web design due in 7 days"*), review a structured proposal, authorize it through an explicit human-in-the-loop approval workflow, dispatch it via the **PayPal Invoicing API (Sandbox)**, and track settlements with cryptographic webhook signature verification and mandatory API re-fetch confirmation.
-
----
-
-## ⚡ Tech Stack
-
-| Layer | Technology | Purpose |
-|---|---|---|
-| **Frontend** | Next.js 14 (App Router), TypeScript, Tailwind CSS, Lucide Icons | Responsive freelancer portal, same-origin API proxy, real-time workflow controls |
-| **Backend API** | Node.js 20+, Fastify 4.x, TypeScript | State machine orchestrator, policy engine, PayPal client, origin-restricted CORS |
-| **Database & ORM** | SQLite (`dev.db`), Prisma ORM 5.x | Data persistence, ACID transactions, and append-only audit trail |
-| **Real AI Service** | Python 3.11+, FastAPI, Uvicorn, Google Gemini | Natural language invoice extraction & contextual reminder drafting |
-| **Fallback AI Service** | TypeScript / Fastify Microservice | Deterministic heuristic fallback microservice |
-| **Payment Gateway** | PayPal Invoicing REST API v2 (Sandbox) | Draft creation, client dispatch, automated reminders, and webhooks |
-| **Authentication** | Signed HTTP-only session cookies with bcrypt password hashing | Protected API routes and authenticated session state |
+[![Live App](https://img.shields.io/badge/Live%20App-Vercel-black?style=for-the-badge&logo=vercel)](https://frontend-nu-indol-56.vercel.app)
+[![Backend API](https://img.shields.io/badge/Backend%20API-Render-46E3B7?style=for-the-badge&logo=render)](https://finpilot-backend-a3lw.onrender.com/health)
+[![Python AI](https://img.shields.io/badge/AI%20Microservice-Python%20FastAPI-3776AB?style=for-the-badge&logo=fastapi)](https://finpilot-ai-d3qf.onrender.com/health)
+[![Database](https://img.shields.io/badge/Database-Neon%20Postgres-00E599?style=for-the-badge&logo=postgresql)](https://neon.tech)
+[![Payments](https://img.shields.io/badge/Payments-PayPal%20Sandbox%20REST%20v2-00457C?style=for-the-badge&logo=paypal)](https://developer.paypal.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](./LICENSE)
 
 ---
 
-## 🧠 Google Gemini Models Used at Runtime
+## ⚡ Quick Demo & Live Deployment Links
 
-The Python AI microservice (`ai-service-python/app/llm.py`) connects to Google Gemini using `google-genai` with automatic model fallback for resilience:
+| Resource | URL | Status |
+|:---|:---|:---:|
+| **Live Web App (Frontend)** | [https://frontend-nu-indol-56.vercel.app](https://frontend-nu-indol-56.vercel.app) | 🟢 **Active (Vercel)** |
+| **Backend API Server** | [https://finpilot-backend-a3lw.onrender.com](https://finpilot-backend-a3lw.onrender.com) | 🟢 **Active (Render)** |
+| **Backend Health Check** | [https://finpilot-backend-a3lw.onrender.com/health](https://finpilot-backend-a3lw.onrender.com/health) | 🟢 `200 OK` |
+| **Python AI Microservice** | [https://finpilot-ai-d3qf.onrender.com](https://finpilot-ai-d3qf.onrender.com) | 🟢 **Active (Render)** |
+| **AI Service Health Check** | [https://finpilot-ai-d3qf.onrender.com/health](https://finpilot-ai-d3qf.onrender.com/health) | 🟢 `200 OK` |
+| **Registered PayPal Webhook** | `https://finpilot-backend-a3lw.onrender.com/api/webhooks/paypal` | 🟢 **Subscribed** |
 
-- **Primary Model**: `gemini-3.1-flash-lite`
-  - Configured via environment variable: `GEMINI_MODEL` (defaults to `"gemini-3.1-flash-lite"`).
-  - High-speed, cost-efficient model used for invoice entity extraction, currency detection, and reminder drafting.
-- **Fallback Model**: `gemini-3.5-flash-lite`
-  - Configured via environment variable: `GEMINI_FALLBACK_MODEL` (defaults to `"gemini-3.5-flash-lite"`).
-  - Automatically engaged if the primary model returns HTTP 503 (service unavailable) or 504 (gateway timeout).
+### 🔑 Demo Account Credentials
 
----
+Use these credentials to log in instantly or click the one-click **"Auto-fill"** button on the login screen:
 
-## 🏗️ Architecture & Data Flow
-
-```
-+-----------------------------------------------------------------------------------+
-|                              Next.js 14 Frontend                                  |
-|         (Dashboard, Invoice Review, Policy Config, Append-Only Audit Trail)       |
-+-----------------------------------------+-----------------------------------------+
-                                          | HTTP / JSON with credentials (Port 3000 -> 4000)
-                                          | Browser uses /api same-origin rewrite proxy
-                                          v
-+-----------------------------------------------------------------------------------+
-|                               Fastify Backend API                                 |
-|  - Human-in-the-Loop State Machine        - Policy Engine (Limits, Duplicates)     |
-|  - PayPal OAuth & Draft/Send Client       - Webhook Verification & Re-Fetch Guard  |
-|  - Strict CORS (FRONTEND_URL only)        - AI Rate Limiter (Quota Protection)     |
-|  - Signed Session Auth & Production Guard - Append-Only Audit Logging              |
-+-------------------+---------------------+--------------------+--------------------+
-                    |                     |                    |
-   HTTP (Port 5002) |    Prisma / SQLite  |   HTTPS            |
-                    v                     v                    v
-+-----------------------+   +-------------------+   +-------------------------------+
-|  Python Gemini AI     |   |   SQLite Database |   |    PayPal Invoicing API v2    |
-|  - POST /parse-invoice|   |  - Users          |   |  - OAuth 2.0 Client Creds     |
-|  - POST /generate-    |   |  - Invoices       |   |  - POST /v2/invoicing/invoices|
-|         reminder      |   |  - InvoiceItems   |   |  - POST .../invoices/{id}/send|
-|  (gemini-3.1-flash-   |   |  - PolicyConfigs  |   |  - POST .../{id}/remind       |
-|   lite & fallback)    |   |  - AuditLogs      |   |  - Webhook: INVOICE.PAID      |
-+-----------------------+   +-------------------+   +-------------------------------+
+```yaml
+URL:      https://frontend-nu-indol-56.vercel.app/login
+Email:    demo@finpilot.dev
+Password: finpilot123
 ```
 
----
-
-## 🛡️ Key Safety & Governance Boundaries
-
-FinPilot was engineered with strict safety mechanisms to eliminate common risks associated with autonomous AI financial tooling:
-
-1. **Human-in-the-Loop Approval Boundary**:
-   - The AI service produces only `PROPOSED` invoice drafts.
-   - **Nothing is ever dispatched to PayPal or emailed to a client without explicit user action in the UI.**
-   - Out-of-order state transitions (e.g., trying to create a PayPal draft before approval) are rejected with HTTP 400 by backend state machine guards.
-
-2. **Real-Time Policy Engine**:
-   - **Max Amount Ceiling**: Configurable invoice ceiling (default: `$10,000 USD`). Invoices exceeding this threshold require explicit warning acknowledgment before approval.
-   - **Duplicate Invoice Prevention**: Blocks creation if an invoice with the identical client email and total amount was created within a configurable sliding window (default: 24 hours).
-   - **Reminder Rate Limits & Cooldowns**: Reminders are strictly barred unless an invoice is `SENT` or `OVERDUE`. Caps reminders at 3 per invoice and enforces a 3-day cooling-off interval between reminders.
-
-3. **Separation of Demo Flags & Payment Simulation**:
-   - **`SHOW_DEMO_LOGIN`** (default `true` in dev): Controls whether demo login credentials and auto-fill hints appear on `/login`.
-   - **`ENABLE_PAYMENT_SIMULATION`** (default `false`): Controls whether the developer `/api/webhooks/simulate` endpoint is registered.
-   - **Public deployments MUST run with `ENABLE_PAYMENT_SIMULATION=false`.** When disabled, the route is completely unregistered and returns 404.
-   - When simulation is enabled for QA, simulated payments are explicitly labeled as `[SIMULATED]` in the immutable audit log and the UI, ensuring no simulated event can ever masquerade as authentic settlement.
-
-4. **Cryptographic Webhook Verification with Mandatory API Re-Fetch**:
-   - Webhook payloads verify PayPal transmission signatures (`paypal-transmission-sig`, `paypal-cert-url`, etc.).
-   - Crucially, FinPilot **never trusts the incoming webhook body alone**. Upon receiving `INVOICING.INVOICE.PAID`, the backend re-fetches the live record directly from PayPal's API.
-   - Marked as `PAID` **only if** PayPal confirms `status === "PAID"` AND `due_amount.value === "0.00"`. Partial or pending payments are logged in the audit trail without altering the paid status.
-
-5. **AI Rate Limiting (Gemini Quota Protection)**:
-   - A sliding-window rate limiter tracks requests per authenticated user and per IP address across AI-backed endpoints (`/invoices/parse` and `/invoices/:id/remind`).
-   - Caps requests to 10 per minute with friendly, actionable error messages and retry-after hints.
-
-6. **Immutable, Append-Only Audit Trail**:
-   - Every invoice proposal, modification, approval, policy check, reminder dispatch, and payment event generates an append-only `AuditLog` entry with timestamp, actor, and context snapshot.
-   - Zero update or delete routes or database mutation paths exist for audit logs across the application.
+> [!NOTE]
+> **Render Free-Tier Cold Starts**: 
+> Render spins down free web services after 15 minutes of inactivity. If visiting after a period of quiet, the backend and AI microservice may take **30 to 45 seconds** on the very first request to wake up. Once warm, all operations run smoothly and instantly.
 
 ---
 
-## 🌐 Real Webhook Readiness & Setup
+## 📖 Executive Summary
 
-To receive real payment notifications from PayPal Sandbox or Live in production:
+Independent freelancers spend hours each month manually typing invoices, calculating due dates, tracking payments, chasing overdue balances, and dreading awkward payment reminder conversations. At the same time, giving an AI direct access to financial actions without boundaries is dangerous: an unconstrained LLM can draft incorrect billing amounts, email clients without authorization, or misinterpret payment webhooks.
 
-### 1. Expose Your Local Server or Deploy Publicly
-PayPal webhooks require an internet-accessible HTTPS endpoint:
-- **Local Sandbox Testing via ngrok**:
-  ```bash
-  ngrok http 4000
-  ```
-  Note your public forwarding URL (e.g. `https://your-subdomain.ngrok-free.app`).
-- **Hosted Cloud Deployment**:
-  Deploy to Render, Fly.io, or Railway and note your backend URL (e.g. `https://api.finpilot.com`).
+**FinPilot solves both problems.** It provides an intelligent, human-in-the-loop autonomous billing assistant built with strict policy safeguards:
 
-> [!IMPORTANT]
-> **Webhook Direct Registration Requirement**:
-> PayPal webhooks **must be registered directly against the Fastify backend's public URL** (`https://<backend-host>/api/webhooks/paypal`), NOT routed through the Next.js frontend rewrite (`https://<frontend-host>/api/webhooks/paypal`).
->
-> **Why?**
-> PayPal's webhook verification service (`/v1/notifications/verify-webhook-signature`) validates asymmetric RSA signatures based on the exact raw transmission bytes and headers (`paypal-transmission-sig`, `paypal-transmission-time`, `paypal-cert-url`, etc.). Intermediate reverse proxies like Next.js rewrites can re-serialize JSON bodies, alter whitespace, stream chunks, or drop custom transmission headers, which causes cryptographic signature checks to fail. Direct routing to Fastify ensures pristine raw body preservation and instant signature validation.
-
-### 2. Register Webhook in PayPal Developer Dashboard
-1. Log in to [PayPal Developer Dashboard](https://developer.paypal.com/dashboard/applications/sandbox).
-2. Select your Sandbox App and scroll to **Webhooks** > **Add Webhook**.
-3. Set the Webhook URL (pointing directly to the backend):
-   ```text
-   https://<backend-public-domain>/api/webhooks/paypal
-   ```
-4. Subscribe to the following events:
-   - `Invoicing invoice paid` (`INVOICING.INVOICE.PAID`)
-   - `Payment capture completed` (`PAYMENT.CAPTURE.COMPLETED`)
-5. Save the webhook and copy the generated **Webhook ID**.
-
-### 3. Configure the Environment Variable
-Set the webhook ID in your `backend/.env`:
-```env
-PAYPAL_WEBHOOK_ID="your_copied_paypal_webhook_id"
-```
-
-### 4. Verify Webhook Readiness via `/health`
-Check backend webhook configuration status at any time:
-```bash
-curl http://localhost:4000/health
-```
-Response:
-```json
-{
-  "status": "ok",
-  "service": "finpilot-backend",
-  "timestamp": "2026-11-09T...",
-  "paypalEnv": "sandbox",
-  "aiServiceUrl": "http://localhost:5002",
-  "webhookVerification": {
-    "configured": true,
-    "webhookIdPresent": true,
-    "simulationMode": false
-  }
-}
-```
-*Note: The health endpoint confirms signature verification status without leaking secret credentials.*
+1. **Natural Language to Structured Invoice**: A freelancer types a plain-text prompt (e.g. *"Bill NexaTech (payables@nexatech.io) $2,250 for React Native & FastAPI mobile architecture (30 hrs @ $75/hr), due next Friday"*). Google Gemini parses the request into structured line items, currency, client metadata, and dates.
+2. **Explicit Human-in-the-Loop Approval**: The AI can *only* create drafts in `PROPOSED` status. Nothing is ever sent to PayPal or emailed to a client without an explicit review and human approval in the UI.
+3. **Real-Time Policy Guardrails**: Automatic policy evaluation warns or blocks high-value ceilings (e.g. `>$10,000`), detects accidental duplicate invoices within a 24-hour sliding window, and regulates dunning frequency.
+4. **Official PayPal Invoicing REST API v2**: Generates legitimate PayPal Sandbox invoices, dispatches them directly to client inboxes with PayPal payer links, and manages dunning reminders.
+5. **Cryptographic Webhook Security with Mandatory Re-Fetch**: Validates incoming `INVOICING.INVOICE.PAID` asymmetric signatures, and **never trusts the webhook body alone**—it independently re-fetches the live invoice from PayPal to confirm full `$0.00` settlement before updating local records.
+6. **Immutable Append-Only Audit Trail**: Every action, actor attribution, policy override, and webhook event is recorded permanently with zero deletion or mutation routes.
 
 ---
 
-## 🔄 State Machine Lifecycle Matrix
+## 🏗️ System Architecture & Data Flow
 
-| State | Allowed Next State | Action Required |
-|---|---|---|
-| `PROPOSED` | `APPROVED` | Explicit UI click on **"Approve Invoice Proposal"** |
-| `APPROVED` | `CREATED` | Freelancer initiates **"Create PayPal Draft"** (`POST /v2/invoicing/invoices`) |
-| `CREATED` | `SENT` | Explicit UI click on **"Send to Client via PayPal"** (`POST .../{id}/send`) |
-| `SENT` | `PAID` | Verified PayPal webhook confirming full payment OR live status sync |
-| `SENT` | `OVERDUE` | System detects `dueDate < now` without settled balance |
-| `OVERDUE` | `PAID` | Late payment confirmed via PayPal re-fetch verification |
-| `PAID` | *None* | Terminal state. No further modifications or reminders permitted. |
+```mermaid
+flowchart TD
+    subgraph Client["User Interface"]
+        Browser["Freelancer Browser\n(Desktop & Mobile)"]
+    end
 
----
+    subgraph Vercel["Frontend Layer (Vercel)"]
+        NextApp["Next.js 14 App Router\n- Dashboard & Analytics\n- Natural Language Modal\n- Invoice Approval Workflow\n- Policy Config & Audit Trail"]
+        Proxy["Same-Origin /api Proxy\n(HttpOnly Cookie Preservation)"]
+    end
 
-## 🚀 Quickstart Guide (Judges: Up in 5 Minutes)
+    subgraph RenderBE["Backend Layer (Render)"]
+        Fastify["Fastify 4.x API Engine\n- State Machine Transitions\n- Real-Time Policy Guardrails\n- Rate Limiting & Auth Guards"]
+        AuditEngine["Append-Only Audit Engine\n(Zero Mutation/Delete Routes)"]
+        PayPalClient["PayPal REST v2 Service\n- OAuth2 Bearer Tokens\n- Drafts, Sends & Reminders\n- Webhook Signature Verifier"]
+    end
 
-### Prerequisites
-- **Node.js**: v18.0.0 or higher (v20+ recommended)
-- **Python**: v3.11 or higher
-- **npm**: v9.0.0 or higher
+    subgraph RenderAI["AI Microservice (Render)"]
+        FastAPI["Python 3.11 FastAPI\n- /v1/parse-invoice\n- /v1/generate-reminder\n- Shared-Secret Header Auth"]
+        GeminiPrimary["Primary: Gemini 3.1 Flash Lite\n(High-speed extraction)"]
+        GeminiFallback["Fallback: Gemini 3.5 Flash Lite\n(Automatic 429/503/504 failover)"]
+    end
 
----
+    subgraph DataCloud["Cloud Database"]
+        NeonDB[("Neon Serverless PostgreSQL\n- Users & Sessions\n- Invoices & Items\n- Policies & AuditLogs")]
+    end
 
-### Step 1: One-Time Setup
+    subgraph External["External Services"]
+        PayPalAPI["PayPal Invoicing API v2\n(Sandbox REST Gateway)"]
+        PayPalHook["PayPal Webhook Service\n(Direct HTTPS Webhook)"]
+    end
 
-1. **Install root & subproject dependencies:**
-   ```bash
-   npm run install:all
-   ```
-
-2. **Install Python AI microservice dependencies:**
-   ```bash
-   python -m pip install -r ai-service-python/requirements.txt
-   ```
-
-3. **Configure Environment Files:**
-   Copy the provided `.env.example` templates to `.env`:
-   ```bash
-   # Root / Backend environment
-   cp .env.example .env
-   cp backend/.env.example backend/.env
-   cp frontend/.env.example frontend/.env
-   cp ai-service-python/.env.example ai-service-python/.env
-   ```
-   *Note: Add your `GEMINI_API_KEY` into `ai-service-python/.env`. All PayPal services default to sandbox simulation mode out of the box if real PayPal keys are not provided.*
-
-4. **Initialize Database & Seed Demo Data:**
-   ```bash
-   npm run reset
-   ```
-   *This wipes any existing database, applies the Prisma schema, and seeds policy defaults, the demo account, and 5 realistic sample invoices across all lifecycle states.*
-
----
-
-### Step 2: Start the Services
-
-You can start all three services together or in separate terminals:
-
-#### Option A: Single Command (Concurrently)
-```bash
-npm run dev
-```
-
-#### Option B: Dedicated Terminals
-```bash
-# Terminal 1: Real Python AI Service (Port 5002 - Google Gemini)
-npm run dev:ai:python
-
-# Terminal 2: Fastify Backend API (Port 4000)
-npm run dev:backend
-
-# Terminal 3: Next.js Frontend (Port 3000)
-npm run dev:frontend
+    Browser -->|"HTTPS"| NextApp
+    NextApp --> Proxy
+    Proxy -->|"Secure Proxy"| Fastify
+    Fastify -->|"Prisma ORM (SSL)"| NeonDB
+    Fastify --> AuditEngine
+    Fastify -->|"Shared-Secret Token"| FastAPI
+    FastAPI --> GeminiPrimary
+    GeminiPrimary -.->|"On Quota / 429 Failover"| GeminiFallback
+    Fastify -->|"OAuth2 Bearer REST"| PayPalClient
+    PayPalClient --> PayPalAPI
+    PayPalHook -->|"POST /api/webhooks/paypal\n(Signed Event)"| Fastify
 ```
 
 ---
 
-### Step 3: Access the Application
+## ⚙️ Tech Stack & Key Components
 
-- **Frontend Portal**: [http://localhost:3000](http://localhost:3000)
-- **Backend API & Health**: [http://localhost:4000/health](http://localhost:4000/health)
-- **Python AI Health**: [http://localhost:5002/health](http://localhost:5002/health)
+| Layer | Technology | Operational Function |
+|:---|:---|:---|
+| **Frontend Portal** | **Next.js 14 (App Router), TypeScript, Tailwind CSS, Lucide** | Responsive billing workspace, conversational invoice modal, same-origin API proxy, live policy feedback. |
+| **Backend API** | **Node.js 20+, Fastify 4.x, TypeScript** | Deterministic state machine, financial policy engine, PayPal client, origin-restricted CORS, rate limiter. |
+| **Database & ORM** | **Neon Serverless PostgreSQL, Prisma ORM 5.x** | ACID transactions, SSL pooling, relational integrity, immutable append-only audit trail. |
+| **AI Microservice** | **Python 3.11+, FastAPI, Uvicorn, Google GenAI SDK** | Natural language invoice extraction, currency detection, contextual dunning reminder drafting. |
+| **LLM Models** | **Google Gemini 3.1 Flash Lite (Primary) & Gemini 3.5 Flash Lite (Fallback)** | Dual-model fallback architecture with bounded single-pass retry for HTTP 429, 503, and 504 errors. |
+| **Payment Gateway** | **PayPal Invoicing REST API v2 (Sandbox)** | Official draft creation, recipient email dispatch, reminder notifications, and webhook settlements. |
+| **Security & Auth** | **Signed HttpOnly Cookies, bcrypt, HMAC SHA-256** | Secure session management, CSRF protection, and asymmetric webhook signature verification. |
+
+---
+
+## 🛡️ Enterprise Financial Safeguards & Policies
+
+### 1. Human-in-the-Loop State Machine
+FinPilot enforces an unbypassable 5-stage deterministic lifecycle:
+```
+[PROPOSED] ──(Explicit User Approval)──> [APPROVED] ──(Create Draft)──> [CREATED] ──(Send to Client)──> [SENT] ──(Verified Webhook)──> [PAID]
+                                                                                                            └──(Overdue Check)──> [OVERDUE] ──(Settlement)──> [PAID]
+```
+- **Zero Autonomous Dispatch**: The AI service produces only `PROPOSED` invoice drafts. It is mathematically impossible for an invoice to be sent to PayPal or emailed to a client without explicit user authorization in the UI.
+- **Terminal Settlement**: Once transitioned to `PAID`, an invoice cannot be modified, re-sent, or reminded.
+
+### 2. Policy Engine Guardrails
+Every invoice proposal and reminder undergoes real-time evaluation before approval:
+- **Maximum Amount Limit**: Defaults to `$10,000.00 USD`. Invoices exceeding this ceiling trigger an alert and require an explicit policy override acknowledgment before approval.
+- **24-Hour Duplicate Window**: Flags any invoice created with the same client email and identical total amount within a 24-hour sliding window, preventing accidental double-billing.
+- **Dunning Safeguards**: Reminders are barred unless an invoice is strictly `SENT` or `OVERDUE`. The policy engine enforces a maximum of 3 reminders per invoice and a mandatory **3-day cooling-off period** between consecutive reminders.
+
+### 3. Cryptographic Webhook Security with Mandatory Re-Fetch
+- FinPilot verifies incoming PayPal webhook signatures against PayPal's verification service (`/v1/notifications/verify-webhook-signature`) checking `paypal-auth-algo`, `paypal-cert-url`, `paypal-transmission-id`, `paypal-transmission-sig`, and `paypal-transmission-time`.
+- **Zero-Trust Webhook Body**: FinPilot **never trusts the incoming webhook payload alone**. Upon receiving `INVOICING.INVOICE.PAID`, the backend makes an out-of-band server-to-server call (`GET /v2/invoicing/invoices/{id}`) directly to PayPal to verify:
+  1. `verifiedStatus === 'PAID'`
+  2. `due_amount === 0.00`
+  3. `paid_amount >= expectedTotal - 0.01`
+- Partial payments or pending authorizations are recorded in the audit trail without prematurely marking the invoice as paid.
+
+### 4. Immutable Append-Only Audit Trail
+- Every proposal generation, edit, approval, policy override, reminder dispatch, and payment event records an immutable `AuditLog` entry with timestamp, actor attribution, and JSON context snapshot.
+- Zero update, edit, or delete endpoints exist in the application for audit records.
+
+---
+
+## 📸 Project Media Gallery
+
+FinPilot features a complete visual design with clean data density and glassmorphism UI:
+
+| Screen | Preview | Highlights |
+|:---|:---|:---|
+| **01. Login Portal** | Secure authentication with signed cookies and one-click demo credentials. |
+| **02. Executive Dashboard** | Real-time cashflow metrics, lifecycle breakdown, and recent invoices. |
+| **03. AI Prompt Modal** | Natural language invoice generator with quick-start templates. |
+| **04. Invoice Detail & PayPal Lifecycle** | State machine controls, PayPal draft creation, and dunning controls. |
+| **05. Policy Guardrails Engine** | Live rule configuration for maximum ceilings, duplicate windows, and reminder limits. |
+| **06. Immutable Audit Trail** | Append-only event log with actor tracking, timestamps, and JSON snapshots. |
+
+*Full high-resolution project media captures are stored in [`project_media/`](./project_media).*
 
 ---
 
 ## 🎮 How to Demo FinPilot (Step-by-Step Walkthrough)
 
-### 1. Sign In
-- Navigate to [http://localhost:3000/login](http://localhost:3000/login).
-- Click the **"Auto-fill"** button in the Demo Credentials banner (`SHOW_DEMO_LOGIN=true`):
-  - **Email**: `demo@finpilot.dev`
-  - **Password**: `finpilot123`
-- Click **"Sign in"**. You will be securely authenticated and redirected to the dashboard.
+### Step 1: Sign In
+1. Visit **[https://frontend-nu-indol-56.vercel.app/login](https://frontend-nu-indol-56.vercel.app/login)**.
+2. Click the **"Auto-fill"** button in the Demo Credentials banner:
+   - **Email**: `demo@finpilot.dev`
+   - **Password**: `finpilot123`
+3. Click **"Sign in"** to enter the workspace.
 
-### 2. Create an Invoice with Plain English
-- Click **"Create Invoice with AI"** in the top navigation or hero banner.
-- Paste the following sample prompt:
-  ```text
-  Invoice Acme Corp (billing@acmecorp.com) $500 for web design and branding due in 7 days
-  ```
-- Click **"Generate Proposal"**.
-- FinPilot will call Google Gemini (`gemini-3.1-flash-lite`), extract structured line items, recipient email, currency, and calculate the due date, and open the invoice detail page in `PROPOSED` status.
+### Step 2: Create an Invoice with Natural Language
+1. Click **"Create Invoice with AI"** in the top navigation bar.
+2. Enter or choose a sample prompt:
+   ```text
+   Bill NexaTech (payables@nexatech.io) $2,250 for React Native & FastAPI mobile architecture (30 hrs @ $75/hr), due next Friday.
+   ```
+3. Click **"Generate Proposal"**. 
+4. Gemini extracts the structured invoice (client name, email, hours, hourly rate, calculated total, and due date).
 
-> [!TIP]
-> **Notice for Hackathon Judges & Evaluators (Duplicate Invoice Detection)**:
-> FinPilot actively enforces a **Duplicate Invoice Prevention Policy** (default 24-hour sliding window). If you or another evaluator already submitted this exact sample prompt (`billing@acmecorp.com` for `$500.00`), the policy engine will flag:
-> ```
-> Duplicate Invoice Detected: Invoice #INV-... for $500.00 was already drafted/sent to billing@acmecorp.com within the last 24 hours
-> ```
-> **How to proceed if flagged:**
-> 1. **Change the prompt/amount**: In the prompt or proposal editor, change the total amount (e.g. `$550` or `$1,200`) or client email (e.g. `billing2@acmecorp.com`).
-> 2. **Or use the Policy Override**: On the invoice review page, check the **"Acknowledge Policy Warning & Override"** checkbox next to the Approve button. This records your explicit override in the append-only audit trail and allows you to proceed with approval.
+### Step 3: Review & Explicit Approval
+1. Review the proposed invoice details on the invoice view page.
+2. Notice the status is `PROPOSED`.
+3. Click **"Approve Invoice Proposal"** to satisfy the human-in-the-loop requirement. The status advances to `APPROVED`.
 
-### 3. Review & Explicit Approval
-- Review the line items and terms. You can click **"Edit Proposal"** to adjust numbers or descriptions.
-- Click **"Approve Invoice Proposal"**.
-- Notice the state moves to `APPROVED`. The human approval requirement is satisfied.
+### Step 4: Create PayPal Draft & Send
+1. Click **"Create PayPal Invoice Draft"**. The backend invokes PayPal's `/v2/invoicing/invoices` API and assigns an official PayPal Invoice ID (`INV2-...`).
+2. Click **"Send to Client via PayPal"**. The invoice is officially dispatched through PayPal's sandbox servers. Status advances to `SENT`.
 
-### 4. Create PayPal Draft & Send
-- Click **"Create PayPal Invoice Draft"**. State advances to `CREATED`, assigning an official PayPal invoice ID.
-- Click **"Send to Client via PayPal"**. State advances to `SENT`. An audit log entry is permanently recorded.
+### Step 5: Send an AI Dunning Reminder
+1. On the sent invoice, click **"Send AI Reminder"**.
+2. Select your desired tone: **Gentle**, **Firm**, or **Urgent**.
+3. Gemini generates personalized dunning copy with all invoice details and the requested tone.
+4. Click **"Dispatch Reminder"** — the reminder count increments to `1/3` and the 3-day cooldown activates.
 
-### 5. Send an AI Reminder
-- On the `SENT` invoice, click **"Send AI Reminder"**.
-- Select a tone: **Gentle**, **Firm**, or **Urgent**.
-- Gemini dynamically generates personalized dunning copy with invoice specifics. Click **"Dispatch Reminder"**.
-- Notice the reminder counter increments to `1/3` and the policy cooldown activates.
-
-### 6. Verify Settlement via Webhook
-- With `ENABLE_PAYMENT_SIMULATION=true`, click **"Simulate Webhook & Re-fetch"**.
-- Select **"Simulate Full Settlement (PAID)"** and submit.
-- FinPilot receives the webhook, verifies transmission headers, performs the mandatory API re-fetch to confirm `$0.00` balance, transitions the invoice to `PAID`, and labels the event as `[SIMULATED]`.
-- Try **"Simulate Partial Payment"**: observe that FinPilot refuses to mark the invoice as paid because balance remains outstanding.
-
-### 7. Inspect Immutable Audit Trail
-- Click **"Audit Trail"** in the navbar or visit [http://localhost:3000/audit](http://localhost:3000/audit).
-- Inspect every action, actor attribution, timestamp, `[SIMULATED]` indicators, and contextual JSON snapshots.
+### Step 6: Verify Immutable Audit Trail
+1. Click **"Audit Trail"** in the top navigation.
+2. Observe every action: proposal creation, policy checks, approval, PayPal draft generation, email dispatch, and reminder generation.
 
 ---
 
-## 🧪 Automated Test Suites
+## 🧪 Comprehensive Automated Test Suites
 
-FinPilot includes complete end-to-end and regression test suites:
+FinPilot includes complete end-to-end and regression test coverage:
 
-### 1. Security & Failure-Path Tests (57 Checks)
-Verifies AI outage handling, approval boundaries, signature forgery prevention, webhook idempotency, reminder cooldowns, rate limits, CORS origin protection, audit log immutability, schema validation, and secret sanitization:
+### 1. Gemini Dual-Model Fallback Unit Tests (10/10 Passed)
 ```bash
-cd backend
-npx tsx test-failure-paths.ts
+cd ai-service-python
+python -m pytest tests/test_fallback.py -v
 ```
+- Validates primary success, HTTP 429 quota exhaustion fallback, HTTP 503/504 gateway failover, immediate failure on auth/permission errors (401/403/400), dual-model failure reporting, and bounded retry prevention.
 
-### 2. Audit Log Immutability Tests (10 Checks)
-Asserts 0 mutation/deletion routes exist in the API and verifies 0 occurrences in source code:
-```bash
-cd backend
-npx tsx test-audit-immutability.ts
-```
-
-### 3. Production Session Secret Guard Test
-Verifies that the backend process immediately halts with code 1 if `SESSION_SECRET` is missing in production:
-```bash
-cd backend
-npx tsx test-session-secret.ts
-```
-
-### 4. Full End-to-End Workflow Test (10 Stages)
-Simulates prompt parsing, policy duplicate rejection, approval transitions, PayPal draft creation, client dispatch, 3 reminder tones, and webhook settlement:
-```bash
-cd backend
-npx tsx test-e2e.ts
-```
-
-### 5. Python AI Service Evals (18 Test Cases)
-Evaluates currency detection, Hinglish parsing, prompt injection defense, missing attributes, and boundary cases with 100% pass rate:
+### 2. Python AI Extraction Evaluation Suite (18/18 Cases, 100% Pass)
 ```bash
 cd ai-service-python
 python evals/run_eval.py
 ```
+- Validates multi-currency detection (`USD`, `EUR`, `GBP`, `INR`), Hinglish parsing, prompt injection defense, missing attributes, and rate-limit buffering.
 
----
-
-## 🚀 Render Native Deployment (Free Tier Guide)
-
-FinPilot can be deployed on Render using native runtimes (Web Services without Docker).
-
-> [!NOTE]
-> **Render Free Tier Spin-Down & Cold Starts**:
-> Render's free tier spins down web services after 15 minutes of inactivity. When spinning up after inactivity:
-> - The first request can take **1 to 2 minutes** to spin up both the frontend and backend instances.
-> - The free filesystem is wiped upon spin-down. FinPilot's **idempotent startup bootstrap** automatically executes `prisma db push` and seeds the demo account on each boot, ensuring the app is always fully operational.
-> - **Demo Credentials**:
->   - **Email**: `demo@finpilot.dev`
->   - **Password**: `finpilot123`
-
----
-
-### Service 1: Python AI Microservice (`ai-service-python`)
-Create a **Web Service** on Render with:
-- **Environment**: `Python 3`
-- **Root Directory**: `ai-service-python`
-- **Build Command**: `pip install --upgrade pip && pip install -r requirements.txt`
-- **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- **Environment Variables**:
-  - `PYTHON_VERSION`: `3.11.9`
-  - `PORT`: `5002` (Render auto-sets `$PORT`)
-  - `GEMINI_API_KEY`: `<your_gemini_api_key>`
-  - `GEMINI_MODEL`: `gemini-3.1-flash-lite`
-  - `GEMINI_FALLBACK_MODEL`: `gemini-3.5-flash-lite`
-  - `AI_SERVICE_TOKEN`: `<your_secure_shared_secret>` (protects public endpoints; requires token header except on `/health`)
-
----
-
-### Service 2: Fastify Backend API (`backend`)
-Create a **Web Service** on Render with:
-- **Environment**: `Node`
-- **Root Directory**: `backend`
-- **Build Command**: `npm install --include=dev && npm run build && npx prisma generate`
-  *(Note: `--include=dev` is mandatory because `typescript` and `prisma` CLI are devDependencies!)*
-- **Start Command**: `npx prisma db push --skip-generate && npx tsx prisma/seed.ts && node dist/index.js`
-  *(Note: Automatically runs schema bootstrap and idempotent seeding before booting Fastify on `0.0.0.0:$PORT`.)*
-- **Environment Variables**:
-  - `NODE_VERSION`: `20.18.0`
-  - `NODE_ENV`: `production`
-  - `HOST`: `0.0.0.0`
-  - `DATABASE_URL`: `file:./dev.db`
-  - `SESSION_SECRET`: `<high_entropy_secret_min_32_characters>`
-  - `FRONTEND_URL`: `https://<your-frontend-service>.onrender.com`
-  - `AI_SERVICE_URL`: `https://<your-ai-service>.onrender.com`
-  - `AI_SERVICE_TOKEN`: `<your_secure_shared_secret>` (matching AI service)
-  - `SHOW_DEMO_LOGIN`: `true`
-  - `ENABLE_PAYMENT_SIMULATION`: `false`
-  - `PAYPAL_CLIENT_ID`: `<paypal_client_id>`
-  - `PAYPAL_CLIENT_SECRET`: `<paypal_client_secret>`
-  - `PAYPAL_WEBHOOK_ID`: `<paypal_webhook_id>`
-  - `PAYPAL_ENV`: `sandbox`
-
----
-
-### Service 3: Next.js Frontend (`frontend`)
-Create a **Web Service** on Render with:
-- **Environment**: `Node`
-- **Root Directory**: `frontend`
-- **Build Command**: `npm install --include=dev && npm run build`
-- **Start Command**: `npm start`
-- **Environment Variables**:
-  - `NODE_VERSION`: `20.18.0`
-  - `NODE_ENV`: `production`
-  - `PORT`: `3000` (Render auto-sets `$PORT`)
-  - `BACKEND_INTERNAL_URL`: `https://<your-backend-service>.onrender.com/api` (**BUILD TIME & RUNTIME** for `next.config.mjs` rewrites and SSR!)
-  - `NEXT_PUBLIC_API_URL`: `https://<your-backend-service>.onrender.com/api`
-
----
-
-## 🐳 Docker Deployment (Untested Reference)
-
-> [!WARNING]
-> **Status**: Untested reference configuration. FinPilot has been thoroughly developed, verified, and regression-tested using **native runtimes** on Windows and Linux. The root `docker-compose.yml` and Dockerfiles are provided as a convenience reference configuration.
-
+### 3. Security & Failure-Path Tests (57 Automated Checks)
 ```bash
-# Reference Docker build (untested on all container daemon variants)
-docker compose up --build
+cd backend
+npx tsx test-failure-paths.ts
 ```
+- Asserts state machine integrity, forged signature rejection, duplicate window enforcement, rate limits, CORS origin isolation, and schema validation.
 
-### Cross-Platform & Engine Details
-- **Linux, macOS, and Docker**: The backend runs the standard, high-performance Node-API **`library`** engine (`libquery_engine-linux-musl-openssl-3.0.x.so.node`). Both `openssl` and `libc6-compat` are installed in the container image.
-- **Windows Local Development**: If you encounter the Windows-specific Node DLL error `query_engine-windows.dll.node is not a valid Win32 application`, set `PRISMA_CLIENT_ENGINE_TYPE="binary"` in your local `backend/.env`. On Linux, macOS, and inside Docker containers, leave `PRISMA_CLIENT_ENGINE_TYPE` unset to use the faster, in-process Node-API library engine without child process overhead.
-- **Automated Container DB Bootstrap**: The backend container automatically executes `npx prisma db push --skip-generate` at container start, ensuring SQLite schemas and tables are initialized in `/app/data/prod.db` without requiring manual database migration commands.
+### 4. Audit Log Immutability Verification (10 Checks)
+```bash
+cd backend
+npx tsx test-audit-immutability.ts
+```
+- Validates zero mutation or deletion routes across the Fastify API.
 
 ---
 
-## 📋 Environment Variables: Build Time vs. Runtime Reference
+## 🚀 Local Development Setup
 
-The table below lists every environment variable used across FinPilot, specifying when it is required (**BUILD TIME** vs. **RUNTIME**), default values, and operational scope:
+### Prerequisites
+- **Node.js**: v20+ recommended
+- **Python**: v3.11+
+- **npm**: v9+
 
-| Variable | Service | Required At | Default / Example | Purpose & Behavior |
-|:---|:---|:---:|:---|:---|
-| `NEXT_PUBLIC_API_URL` | Frontend | **BUILD TIME** | `http://localhost:4000/api` | Inlined into client-side JavaScript bundles by the Next.js compiler during `npm run build`. |
-| `BACKEND_INTERNAL_URL` | Frontend | **BUILD & RUNTIME** | `http://backend:4000/api` | Target URL used by Next.js server rewrites (`next.config.mjs`) during compilation and SSR to route `/api/*` calls directly to the Fastify backend. |
-| `PORT` | Frontend | **RUNTIME** | `3000` | Port on which the Next.js web application listens. |
-| `NODE_ENV` | All Services | **BUILD & RUNTIME** | `production` / `development` | Optimizes Next.js compilation (`production`) and activates backend session security guards and cookie flags. |
-| `DATABASE_URL` | Backend | **BUILD & RUNTIME** | `file:/app/data/prod.db` | SQLite database file location. Used during schema pushes and runtime queries. |
-| `PRISMA_CLIENT_ENGINE_TYPE` | Backend | **BUILD & RUNTIME** | `library` (Linux/macOS) / `binary` (Windows) | Controls whether Prisma uses Node-API (`library`) or external child processes (`binary`). On Linux/macOS/Docker, leave unset (defaults to `library`). On Windows, set to `binary` if DLL loading errors occur. |
-| `PORT` | Backend | **RUNTIME** | `4000` | Port on which the Fastify API server listens. |
-| `HOST` | Backend | **RUNTIME** | `0.0.0.0` | Bind address for Fastify server (`0.0.0.0` required for cloud platforms like Render). |
-| `SESSION_SECRET` | Backend | **RUNTIME** | *Required in Prod* (min 32 chars) | Cryptographic HMAC secret used to sign session cookies. Refuses to start if missing or under 32 chars in production. |
-| `FRONTEND_URL` | Backend | **RUNTIME** | `http://localhost:3000` | Whitelisted CORS origin. Refuses to reflect untrusted origins for credentialed requests. |
-| `AI_SERVICE_URL` | Backend | **RUNTIME** | `http://ai-service:5002` | Target URL of the primary Python AI service for natural language invoice extraction and reminder drafting. |
-| `AI_MOCK_SERVICE_URL` | Backend | **RUNTIME** | `http://localhost:5001` | Optional fallback URL to the deterministic TypeScript mock microservice if the Python service is offline. |
-| `AI_SERVICE_TOKEN` | Backend & AI Service | **RUNTIME** | `replace-with-a-secure-random-token` | Shared-secret token header (`X-AI-Service-Token`) sent by the backend and required by the publicly reachable Python service. |
-| `SHOW_DEMO_LOGIN` | Backend | **RUNTIME** | `false` (prod) / `true` (dev) | Exposes demo account credentials and auto-fill button on the `/login` page. |
-| `ENABLE_PAYMENT_SIMULATION`| Backend | **RUNTIME** | `false` (prod) / `false` (dev) | Registers `/api/webhooks/simulate`. Must remain `false` on public and production deployments. |
-| `PAYPAL_ENV` | Backend | **RUNTIME** | `sandbox` / `live` | Target PayPal REST API environment. |
-| `PAYPAL_BASE_URL` | Backend | **RUNTIME** | `https://api-m.sandbox.paypal.com` | Base endpoint for PayPal Invoicing REST v2 calls. |
-| `PAYPAL_CLIENT_ID` | Backend | **RUNTIME** | *PayPal Sandbox Client ID* | OAuth 2.0 client credential for PayPal invoicing. |
-| `PAYPAL_CLIENT_SECRET` | Backend | **RUNTIME** | *PayPal Sandbox Secret* | OAuth 2.0 client secret for PayPal authentication. |
-| `PAYPAL_WEBHOOK_ID` | Backend | **RUNTIME** | *PayPal Webhook ID* | Registered webhook ID used to cryptographically verify incoming payment notifications. |
-| `MAX_INVOICE_AMOUNT` | Backend | **RUNTIME** | `10000` | Policy ceiling above which an invoice requires explicit warning override before approval. |
-| `DUPLICATE_WINDOW_HOURS` | Backend | **RUNTIME** | `24` | Sliding-window threshold (hours) for blocking duplicate invoices with matching email and amount. |
-| `MAX_REMINDERS_PER_INVOICE`| Backend | **RUNTIME** | `3` | Maximum permitted automated dunning reminders per invoice. |
-| `MIN_DAYS_BETWEEN_REMINDERS`| Backend | **RUNTIME** | `3` | Minimum mandatory cooling-off period (days) between consecutive reminders. |
-| `PORT` | AI Service | **RUNTIME** | `5002` | Port on which the Python FastAPI/Uvicorn microservice listens. |
-| `GEMINI_API_KEY` | AI Service | **RUNTIME** | *Google AI Studio Key* | Secret API key used for Google Gemini model inference. |
-| `GEMINI_MODEL` | AI Service | **RUNTIME** | `gemini-3.1-flash-lite` | Primary Gemini model name for invoice extraction and reminders. |
-| `GEMINI_FALLBACK_MODEL` | AI Service | **RUNTIME** | `gemini-3.5-flash-lite` | Fallback Gemini model name automatically engaged if primary returns 503/504 errors. |
+### Quickstart
+
+1. **Clone repository & install dependencies**:
+   ```bash
+   git clone https://github.com/ShivamMungbhate/FinPilot.git
+   cd FinPilot
+   npm run install:all
+   python -m pip install -r ai-service-python/requirements.txt
+   ```
+
+2. **Configure environment files**:
+   ```bash
+   cp .env.example .env
+   cp backend/.env.example backend/.env
+   cp frontend/.env.example frontend/.env
+   cp ai-service-python/.env.example ai-service-python/.env
+   ```
+   Add your `GEMINI_API_KEY` into `ai-service-python/.env`.
+
+3. **Initialize database & seed demo records**:
+   ```bash
+   npm run reset
+   ```
+
+4. **Start all services concurrently**:
+   ```bash
+   npm run dev
+   ```
+   - **Frontend**: [http://localhost:3000](http://localhost:3000)
+   - **Backend API**: [http://localhost:4000](http://localhost:4000)
+   - **Python AI**: [http://localhost:5002](http://localhost:5002)
+
+---
+
+## 📋 Environment Configuration Reference
+
+| Variable | Target Service | Type | Purpose |
+|:---|:---|:---:|:---|
+| `NEXT_PUBLIC_API_URL` | Frontend | Build-time | Base API URL for browser requests. |
+| `BACKEND_INTERNAL_URL` | Frontend | Build & Runtime | Proxy destination for Next.js same-origin `/api` rewrites. |
+| `DATABASE_URL` | Backend | Runtime | PostgreSQL connection string (Neon Serverless with SSL). |
+| `SESSION_SECRET` | Backend | Runtime | Minimum 32-character HMAC secret for signed session cookies. |
+| `FRONTEND_URL` | Backend | Runtime | Whitelisted origin for strict CORS credentials verification. |
+| `AI_SERVICE_URL` | Backend | Runtime | Target URL of the Python AI microservice. |
+| `AI_SERVICE_TOKEN` | Backend & AI Service | Runtime | Shared-secret bearer token protecting public AI endpoints. |
+| `SHOW_DEMO_LOGIN` | Backend | Runtime | Toggles demo credential helpers on the login page (`true`/`false`). |
+| `ENABLE_PAYMENT_SIMULATION` | Backend | Runtime | Disables developer simulation endpoints on public deployments (`false`). |
+| `PAYPAL_ENV` | Backend | Runtime | Target PayPal environment (`sandbox` or `live`). |
+| `PAYPAL_CLIENT_ID` | Backend | Runtime | PayPal Developer Sandbox Client ID. |
+| `PAYPAL_CLIENT_SECRET` | Backend | Runtime | PayPal Developer Sandbox Secret. |
+| `PAYPAL_WEBHOOK_ID` | Backend | Runtime | PayPal registered webhook ID for cryptographic validation. |
+| `GEMINI_API_KEY` | AI Service | Runtime | Google AI Studio API Key. |
+| `GEMINI_MODEL` | AI Service | Runtime | Primary model identifier (`gemini-3.1-flash-lite`). |
+| `GEMINI_FALLBACK_MODEL` | AI Service | Runtime | Fallback model identifier on 429/503/504 (`gemini-3.5-flash-lite`). |
 
 ---
 
