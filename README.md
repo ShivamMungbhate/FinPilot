@@ -32,11 +32,7 @@ Email:    demo@finpilot.dev
 Password: finpilot123
 ```
 
-> [!NOTE]
-> **Render Free-Tier Cold Starts**: 
-> Render spins down free web services after 15 minutes of inactivity. If visiting after a period of quiet, the backend and AI microservice may take **30 to 45 seconds** on the very first request to wake up. Once warm, all operations run smoothly and instantly.
 
----
 
 ## 📖 Executive Summary
 
